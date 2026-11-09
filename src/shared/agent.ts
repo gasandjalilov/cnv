@@ -1,5 +1,6 @@
 import type { CanvasColor, EdgeEnd, NodeSide } from './canvas'
 import type { BoardOp, BoardSpec } from '@core/board'
+import type { DataRow, DataSpec, DataSpecPatch, DataView, DataOptions } from '@core/data'
 import type { PortalDelivery, PortalMemberView, PortalView, PortalWireMessage } from './portal'
 
 /**
@@ -9,7 +10,18 @@ import type { PortalDelivery, PortalMemberView, PortalView, PortalWireMessage } 
  */
 
 export type AgentNodeKind =
-  'text' | 'image' | 'pdf' | 'web' | 'group' | 'file' | 'terminal' | 'agent' | 'portal' | 'timer' | 'board'
+  | 'text'
+  | 'image'
+  | 'pdf'
+  | 'web'
+  | 'group'
+  | 'file'
+  | 'terminal'
+  | 'agent'
+  | 'portal'
+  | 'timer'
+  | 'board'
+  | 'data'
 
 export interface AgentRect {
   x: number
@@ -61,6 +73,8 @@ export interface AgentNode extends AgentRect {
   next?: string
   /** Доска: дорожки с карточками. */
   board?: BoardSpec
+  /** Данные и выбранное представление для data-ноды. */
+  data?: DataSpec
 }
 
 export interface AgentEdge {
@@ -99,6 +113,7 @@ export type AgentNodeInit =
   | { kind: 'portal'; key?: string; label?: string }
   | { kind: 'timer'; every: number; message: string }
   | { kind: 'board'; title?: string; lanes?: string[] }
+  | { kind: 'data'; title?: string; view?: DataView; data: DataRow[]; options?: DataOptions }
   | { kind: 'terminal'; cwd?: string; name?: string; role?: string }
   | {
       kind: 'agent'
@@ -154,6 +169,8 @@ export interface AgentNodePatch {
   paused?: boolean
   /** Доска: операция над дорожками и карточками. */
   board?: BoardOp
+  /** Data-нода: частичная замена представления, строк или настроек. */
+  data?: DataSpecPatch
 }
 
 export interface AgentEdgeInit {

@@ -51,6 +51,7 @@ import { useDocState } from './canvas/useDocState'
 import { useCommands, type CommandHandlers } from './commands/useCommands'
 import { registerBuiltinNodeTypes } from './nodes'
 import { Hud } from './ui/Hud'
+import { InstantTooltip } from './ui/InstantTooltip'
 import { ConflictDialog } from './ui/ConflictDialog'
 import { useTheme } from './ui/useTheme'
 import { useTerminalThemeRoot } from './nodes/terminal-theme'
@@ -77,6 +78,8 @@ import { pulseBetween } from './workspace/useAgentBridge'
 import { WebLiveContext, WebRuntimeContext } from './web/context'
 import { useWebLifecycle } from './web/useWebLifecycle'
 import { UrlPrompt } from './ui/UrlPrompt'
+import { DatabaseImportDialog } from './ui/DatabaseImportDialog'
+import { KanbanImportDialog } from './ui/KanbanImportDialog'
 import { SessionPicker } from './ui/SessionPicker'
 import { requestTerminalRestart } from './nodes/terminal-registry'
 import { TextPrompt } from './ui/TextPrompt'
@@ -84,6 +87,8 @@ import { CardEditor } from './ui/CardEditor'
 import { openNode } from './canvas/open-node'
 import { mutateBoard } from './nodes/BoardNode'
 import { BOARD_SIZE, boardSpec, newBoard } from '@core/board'
+import { DATA_SIZE, makeDataSpec } from '@core/data'
+import { parseTableFile } from '@core/data-import'
 import { SettingsPanel } from './ui/SettingsPanel'
 import { ShortcutsHelp } from './ui/ShortcutsHelp'
 import { ContextMenu, type ContextMenuState } from './ui/ContextMenu'
@@ -138,6 +143,9 @@ export function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [menuState, setMenuState] = useState<ContextMenuState | null>(null)
+  const [dataImportError, setDataImportError] = useState<string | null>(null)
+  const [databaseImport, setDatabaseImport] = useState<Placement | null>(null)
+  const [kanbanImport, setKanbanImport] = useState<Placement | null>(null)
   const [cropping, setCropping] = useState<string | null>(null)
   const [eyedropper, setEyedropper] = useState(false)
   // «Продолжить сессию…»: у агента на холсте (nodeId) или для нового агента (без nodeId).
@@ -162,7 +170,7 @@ export function App(): React.JSX.Element {
   }, [liveIds, docState.doc.nodes])
   const visible = useVisibleRect(camera, window.innerHeight / 2)
 
-  useTheme(settings.theme)
+  const resolvedTheme = useTheme(settings.theme)
   useTerminalThemeRoot(settings.terminal.theme)
 
   useEffect(() => {
@@ -420,6 +428,44 @@ export function App(): React.JSX.Element {
     )
   }
 
+  function createData(place: Placement | null): void {
+    spawnNode(
+      'данные',
+      () => ({ type: 'data', data: makeDataSpec({ title: 'Данные', view: 'table', rows: [] }) }),
+      DATA_SIZE,
+      place?.at ?? screenCenter(),
+      place?.from
+    )
+  }
+
+  function createDataImport(place: Placement | null): void {
+    setDataImportError(null)
+    const run = async (): Promise<void> => {
+      const paths = await window.api.files.choose([
+        { name: 'Таблицы (CSV, TSV, JSON)', extensions: ['csv', 'tsv', 'json'] }
+      ])
+      const center = place?.at ?? screenCenter()
+      for (const [index, source] of paths.entries()) {
+        const imported = await window.api.attachments.importPath(source)
+        const text = await window.api.files.readText(imported.relPath)
+        if (text === null) throw new Error(`не прочитался ${source}`)
+        const rows = parseTableFile(imported.relPath, text)
+        const base = imported.relPath.split('/').pop() ?? 'Таблица'
+        const title = base.replace(/\.(csv|tsv|json)$/i, '')
+        spawnNode(
+          'импорт таблицы',
+          () => ({ type: 'data', data: makeDataSpec({ title, view: 'table', rows }) }),
+          DATA_SIZE,
+          { x: center.x + index * 24, y: center.y + index * 24 },
+          place?.from
+        )
+      }
+    }
+    void run().catch((error: unknown) => {
+      setDataImportError(`Импорт таблицы: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+
   /** Файлы с диска: каждый следующий чуть ниже и правее предыдущего. */
   function createFiles(place: Placement | null): void {
     void window.api.files.choose().then(async (paths) => {
@@ -463,7 +509,12 @@ export function App(): React.JSX.Element {
       case 'timer':
         return TIMER_SIZE
       case 'board':
+      case 'kanbanImport':
         return BOARD_SIZE
+      case 'data':
+      case 'dataImport':
+      case 'databaseImport':
+        return DATA_SIZE
     }
   }
 
@@ -494,6 +545,18 @@ export function App(): React.JSX.Element {
         return
       case 'board':
         createBoard(place)
+        return
+      case 'data':
+        createData(place)
+        return
+      case 'dataImport':
+        createDataImport(place)
+        return
+      case 'databaseImport':
+        setDatabaseImport(place)
+        return
+      case 'kanbanImport':
+        setKanbanImport(place)
         return
       case 'agent':
         createTerminal(agent ?? settings.agents.default, place)
@@ -553,6 +616,10 @@ export function App(): React.JSX.Element {
     'create.portal': () => createPortal(null),
     'create.timer': () => createTimer(null),
     'create.board': () => createBoard(null),
+    'create.data': () => createData(null),
+    'create.importData': () => createDataImport(null),
+    'create.importDatabase': () => setDatabaseImport({ at: screenCenter(), from: [] }),
+    'create.importKanban': () => setKanbanImport({ at: screenCenter(), from: [] }),
     'node.rename': () => {
       const group = docState.doc.nodes.find((n) => docState.selection.has(n.id) && n.type === 'group')
       if (group && docState.selection.size === 1) return setNamePrompt({ nodeId: group.id, field: 'label' })
@@ -844,11 +911,17 @@ export function App(): React.JSX.Element {
                 onFitAll={() => handlers['view.zoomFit']?.()}
                 onFitSelection={() => handlers['view.zoomSelection']?.()}
                 canFitSelection={docState.selection.size > 0}
+                dark={resolvedTheme === 'dark'}
+                onToggleTheme={() =>
+                  void window.api.settings.patch({ theme: resolvedTheme === 'dark' ? 'light' : 'dark' })
+                }
               />
+              <InstantTooltip />
               {file.conflict && (
                 <ConflictDialog change={file.conflict} onChoose={(c) => void file.resolveConflict(c)} />
               )}
               {file.error && <div className="banner banner--error">{file.error}</div>}
+              {dataImportError && <div className="banner banner--error">{dataImportError}</div>}
               {editingEdge && (
                 <EdgeLabelEditor
                   initial={docState.doc.edges.find((e) => e.id === editingEdge)?.label ?? ''}
@@ -889,6 +962,50 @@ export function App(): React.JSX.Element {
                   onSubmit={(url) => {
                     setUrlPrompt(null)
                     createWebNode(url, urlPrompt)
+                  }}
+                />
+              )}
+              {databaseImport && (
+                <DatabaseImportDialog
+                  onCancel={() => setDatabaseImport(null)}
+                  onImport={(table, result) => {
+                    const place = databaseImport
+                    setDatabaseImport(null)
+                    spawnNode(
+                      'импорт из базы данных',
+                      () => ({
+                        type: 'data',
+                        data: makeDataSpec({
+                          title: result.truncated ? `${table} (первые 500)` : table,
+                          view: 'table',
+                          rows: result.rows
+                        })
+                      }),
+                      DATA_SIZE,
+                      place.at,
+                      place.from
+                    )
+                  }}
+                />
+              )}
+              {kanbanImport && (
+                <KanbanImportDialog
+                  onCancel={() => setKanbanImport(null)}
+                  onImport={(result) => {
+                    const place = kanbanImport
+                    setKanbanImport(null)
+                    spawnNode(
+                      'импорт канбан-доски',
+                      () => ({
+                        type: 'board',
+                        board: result.truncated
+                          ? { ...result.board, title: `${result.board.title} (первые 500)` }
+                          : result.board
+                      }),
+                      BOARD_SIZE,
+                      place.at,
+                      place.from
+                    )
                   }}
                 />
               )}

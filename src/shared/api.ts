@@ -3,6 +3,8 @@ import type { AgentPluginsState, AgentSessionInfo } from './agent-plugin'
 import type { Settings } from './settings'
 import type { SnapshotPayload } from './snapshot'
 import type { DeviceIdentityView, PortalDelivery, PortalIncoming } from './portal'
+import type { DatabaseConnection, DatabaseTable, DatabaseTableRows } from './database'
+import type { KanbanConnection, KanbanImportResult, KanbanSource } from './kanban'
 
 export interface WorkspaceInfo {
   root: string
@@ -148,6 +150,14 @@ export interface AppApi {
       baseMtimeMs: number | null,
       force?: boolean
     ): Promise<TextFileWrite>
+  }
+  database: {
+    tables(connection: DatabaseConnection): Promise<DatabaseTable[]>
+    rows(connection: DatabaseConnection, table: DatabaseTable): Promise<DatabaseTableRows>
+  }
+  kanban: {
+    sources(connection: KanbanConnection): Promise<KanbanSource[]>
+    import(connection: KanbanConnection, source: KanbanSource): Promise<KanbanImportResult>
   }
   shell: {
     openExternal(url: string): Promise<void>

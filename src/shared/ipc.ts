@@ -25,6 +25,12 @@ export const IPC = {
   filesReadDoc: 'files:read-doc',
   filesWriteDoc: 'files:write-doc',
 
+  databaseTables: 'database:tables',
+  databaseRows: 'database:rows',
+
+  kanbanSources: 'kanban:sources',
+  kanbanImport: 'kanban:import',
+
   shellOpenExternal: 'shell:open-external',
 
   clipboardWriteCanvas: 'clipboard:write-canvas',

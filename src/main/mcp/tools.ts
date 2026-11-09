@@ -4,6 +4,8 @@ import { matchName, notFoundMessage } from '@core/name-match'
 import { queryNodes } from '@core/node-query'
 import { TIMER_DEFAULT_EVERY, formatEvery } from '@core/timer'
 import type { BoardOp } from '@core/board'
+import { DATA_VIEWS, type DataOptions, type DataRow, type DataSpecPatch, type DataView } from '@core/data'
+import { DataImportError, parseTableFile } from '@core/data-import'
 import { newId } from '@core/document'
 import { edgeCrossings, findOverlaps, layoutRects, type LayoutMode } from '@core/layout'
 import { defaultSides } from '@core/edges'
@@ -69,6 +71,8 @@ export interface ToolDeps {
   post?: Pick<LetterPost, 'send'>
   /** Файл снаружи workspace копируется во вложения; путь — относительно workspace. */
   importFile(absPath: string): Promise<{ relPath: string; source?: string }>
+  /** Текст файла внутри workspace для импорта таблиц. */
+  readFile?(relPath: string): Promise<string | null>
   /** PNG нод/области в base64 — скрытым окном, без сдвига камеры человеку. */
   snapshot?(source: AgentMethods['snapshotSource']['result'], scale: number): Promise<string>
   /** Замер производительности окна холста и процессов (см. mcp/perf.ts). */
@@ -127,7 +131,18 @@ const messageView = (m: AgentMessage): Record<string, unknown> => ({
   at: new Date(m.at).toISOString()
 })
 
-const KINDS = ['text', 'file', 'web', 'group', 'terminal', 'agent', 'portal', 'timer', 'board'] as const
+const KINDS = [
+  'text',
+  'file',
+  'web',
+  'group',
+  'terminal',
+  'agent',
+  'portal',
+  'timer',
+  'board',
+  'data'
+] as const
 const COLORS = ['1', '2', '3', '4', '5', '6'] as const
 const ENDS: readonly EdgeEnd[] = ['none', 'arrow']
 
@@ -141,6 +156,22 @@ const ids = (description: string): JsonSchema => ({ type: 'array', items: { type
 const colorSchema = str(
   'Цвет: пресет "1".."6" (красный, оранжевый, жёлтый, зелёный, голубой, фиолетовый) или "#rrggbb"'
 )
+const dataViewSchema = str('Представление data-ноды', { enum: DATA_VIEWS })
+const dataRowsSchema: JsonSchema = {
+  type: 'array',
+  items: { type: 'object' },
+  description:
+    'Строки data-ноды: массив плоских объектов; значения — строка, конечное число, boolean или null. Для metric используй label/value/total; для chart задай options.x/options.y'
+}
+const dataOptionsSchema: JsonSchema = {
+  type: 'object',
+  description: 'Настройки data-ноды',
+  properties: {
+    x: str('Поле подписей/категорий графика'),
+    y: str('Поле числовых значений графика'),
+    series: str('Тип графика', { enum: ['line', 'bar'] })
+  }
+}
 
 const rectSchema = (description: string): JsonSchema => ({
   type: 'object',
@@ -207,6 +238,16 @@ function nodePatch(args: Record<string, unknown>): AgentNodePatch {
   if (message !== undefined) patch.message = message
   const paused = opt<boolean>(args, 'paused')
   if (paused !== undefined) patch.paused = paused
+  const data: DataSpecPatch = {}
+  const title = opt<string>(args, 'title')
+  if (title !== undefined) data.title = title
+  const view = opt<DataView>(args, 'view')
+  if (view !== undefined) data.view = view
+  const rows = opt<DataRow[]>(args, 'data')
+  if (rows !== undefined) data.rows = rows
+  const options = opt<DataOptions>(args, 'options')
+  if (options !== undefined) data.options = options
+  if (Object.keys(data).length) patch.data = data
   return patch
 }
 
@@ -538,14 +579,16 @@ export function buildTools(deps: ToolDeps): McpTool[] {
     {
       name: 'create_node',
       description:
-        'Создать ноду: text (markdown-карточка), web (живая веб-страница по url), file (картинка/PDF/любой файл; абсолютный путь вне workspace копируется во вложения и следует за оригиналом; текстовый файл — .md, .txt, .dot, .json… — показан содержимым и сам обновляется, когда файл меняется на диске: пиши в файл, карточка перерисуется), group (рамка с подписью), portal (дверь к агентам другого cnv: на обеих сторонах портал с одним ключом; ключ вернётся в ответе — передай его человеку), terminal (новый терминал; command — что в нём сразу запустить), board (канбан-доска: дорожки с markdown-карточками; по умолчанию Backlog, In progress, Done — свои в lanes; дальше — инструмент board), timer (кружок, который раз в every минут шлёт message всем агентам, соединённым с ним связью, — только когда агент свободен; соедини его с агентом create_edge), agent (терминал с ИИ-агентом: своя сессия, переживает перезапуск; agent — какой: claude, codex, opencode, kimi… см. list_agent_types; prompt — первое задание). Имя даёт cnv: агенту — человеческое («Задумчивый Даня»), терминалу — номер («Терминал 3»), странице — домен. Терминалу и странице можно задать своё через name (и переименовать — update_node name), агенту — нет: его специальность пиши в role. Без x/y нода встаёт рядом с near, а по умолчанию — рядом с твоим терминалом.',
+        'Создать ноду: text (markdown-карточка), web (живая веб-страница по url), file (картинка/PDF/любой файл; абсолютный путь вне workspace копируется во вложения и следует за оригиналом; текстовый файл — .md, .txt, .dot, .json… — показан содержимым и сам обновляется, когда файл меняется на диске: пиши в файл, карточка перерисуется), group (рамка с подписью), portal (дверь к агентам другого cnv: на обеих сторонах портал с одним ключом; ключ вернётся в ответе — передай его человеку), terminal (новый терминал; command — что в нём сразу запустить), board (канбан-доска: дорожки с markdown-карточками; по умолчанию Backlog, In progress, Done — свои в lanes; дальше — инструмент board), data (JSON-строки data или импорт таблицы file=путь.csv/.tsv/.json с представлением view=metric/table/chart: метрики label/value/total, таблица по всем полям, SVG-график по options.x/options.y и options.series=line/bar; обновление — update_node title/view/data/options), timer (кружок, который раз в every минут шлёт message всем агентам, соединённым с ним связью, — только когда агент свободен; соедини его с агентом create_edge), agent (терминал с ИИ-агентом: своя сессия, переживает перезапуск; agent — какой: claude, codex, opencode, kimi… см. list_agent_types; prompt — первое задание). Имя даёт cnv: агенту — человеческое («Задумчивый Даня»), терминалу — номер («Терминал 3»), странице — домен. Терминалу и странице можно задать своё через name (и переименовать — update_node name), агенту — нет: его специальность пиши в role. Без x/y нода встаёт рядом с near, а по умолчанию — рядом с твоим терминалом.',
       inputSchema: {
         type: 'object',
         properties: {
           kind: str('Вид ноды', { enum: KINDS }),
           text: str('Текст карточки (markdown) — для kind=text'),
           url: str('http(s)-адрес — для kind=web'),
-          file: str('Путь к файлу — для kind=file: относительно workspace или абсолютный'),
+          file: str(
+            'Путь к файлу — для kind=file, или CSV/TSV/JSON для kind=data: относительно workspace или абсолютный'
+          ),
           label: str('Подпись группы или портала — для kind=group / portal'),
           key: str(
             'Ключ портала (kind=portal): такой же, как у портала на той стороне; без него придумается новый'
@@ -564,12 +607,15 @@ export function buildTools(deps: ToolDeps): McpTool[] {
           role: str('Роль терминала/агента/веб-страницы: кто это и чем занят (видна другим агентам)'),
           command: str('Команда, которую выполнить в новом терминале (Enter добавится сам)'),
           every: num('Интервал таймера в минутах (kind=timer): от 1, по умолчанию 15'),
-          title: str('Название доски — для kind=board'),
+          title: str('Название доски или data-ноды — для kind=board / data'),
           lanes: {
             type: 'array',
             items: { type: 'string' },
             description: 'Дорожки доски по порядку — для kind=board (по умолчанию Backlog, In progress, Done)'
           },
+          view: dataViewSchema,
+          data: dataRowsSchema,
+          options: dataOptionsSchema,
           message: str('Что таймер шлёт агентам — для kind=timer'),
           x: num('Левый край, мировые координаты'),
           y: num('Верхний край'),
@@ -608,7 +654,7 @@ export function buildTools(deps: ToolDeps): McpTool[] {
     {
       name: 'update_node',
       description:
-        'Поменять ноду: координаты, размер, цвет (null — снять), текст карточки (целиком — text, дописать в конец — append, поправить кусками — edits), url веб-страницы, подпись группы, интервал, текст и паузу таймера.',
+        'Поменять ноду: координаты, размер, цвет (null — снять), текст карточки (целиком — text, дописать в конец — append, поправить кусками — edits), url веб-страницы, подпись группы, интервал, текст и паузу таймера. Data-ноде — title, view=metric/table/chart, data (весь массив строк) и options (x/y/series).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -628,6 +674,10 @@ export function buildTools(deps: ToolDeps): McpTool[] {
           },
           url: str('Новый адрес веб-страницы'),
           label: str('Новая подпись группы'),
+          title: str('Новое название data-ноды'),
+          view: dataViewSchema,
+          data: dataRowsSchema,
+          options: dataOptionsSchema,
           role: str('Новая роль терминала/агента/веб-страницы; пустая строка — снять'),
           name: str('Новое имя терминала/агента/веб-страницы'),
           icon: str('Значок агента — один emoji (🧪, 📱…); пустая строка — снять'),
@@ -2140,6 +2190,34 @@ export function buildTools(deps: ToolDeps): McpTool[] {
         )
         return { kind, ...(title ? { title } : {}), ...(lanes?.length ? { lanes } : {}) }
       }
+      case 'data': {
+        let title = opt<string>(args, 'title')
+        let rows = opt<DataRow[]>(args, 'data')
+        const file = opt<string>(args, 'file')
+        if (file) {
+          if (rows !== undefined) throw new ToolInputError('для kind=data укажи file или data, не оба')
+          const imported = path.isAbsolute(file) ? await deps.importFile(file) : { relPath: file }
+          const text = deps.readFile ? await deps.readFile(imported.relPath) : null
+          if (text === null) throw new ToolInputError(`не прочитался ${file}`)
+          try {
+            rows = parseTableFile(imported.relPath, text)
+          } catch (error) {
+            if (error instanceof DataImportError) throw new ToolInputError(error.message)
+            throw error
+          }
+          title ??= (imported.relPath.split('/').pop() ?? 'Таблица').replace(/\.(csv|tsv|json)$/i, '')
+        }
+        if (!Array.isArray(rows)) throw new ToolInputError('для kind=data нужен массив «data» или «file»')
+        const view = opt<DataView>(args, 'view')
+        const options = opt<DataOptions>(args, 'options')
+        return {
+          kind,
+          data: rows,
+          ...(title ? { title } : {}),
+          ...(view ? { view } : {}),
+          ...(options ? { options } : {})
+        }
+      }
       case 'timer':
         return { kind, every: opt<number>(args, 'every') ?? TIMER_DEFAULT_EVERY, message: need('message') }
       case 'portal': {
@@ -2201,6 +2279,7 @@ export function serverInfo(deps: ToolDeps): ServerInfo {
         'Можно запускать соседних агентов (create_node kind=agent prompt=…), писать им письма (agent_send, данные — вложением data; отвечают через agent_send reply_to=<id>, ответ приходит сам отдельным сообщением — нечего делать, закончи ход; wait_reply — только если без ответа не продолжить), перечитать почту — inbox; терминалы с командами — kind=terminal command=…, terminal_send.',
         'Письма тебе приходят сообщением в чат или каналом — <channel source="cnv" msg_id=… from_id=… from=…>текст</channel>; ответить: agent_send id=<from_id> reply_to=<msg_id>.',
         'Канбан-доски (kind=board) — дорожки с markdown-карточками; читать и править — инструмент board. Подключённые к доске связью агенты получают письма о её событиях.',
+        'Data-ноды (kind=data) — JSON-строки data или импорт file=CSV/TSV/JSON с видом metric/table/chart: метрики label/value/total, таблица, SVG-график options.x/y и series=line/bar. Обновляй данные и вид через update_node title/view/data/options.',
         'Таймеры (kind=timer) — кружки, которые раз в every минут шлют message агентам, соединённым с ними связью, когда агент свободен; письмо приходит с пометкой [таймер …]. Интервал, текст, паузу меняй update_node every/message/paused.',
         'Порталы (kind=portal) — двери к агентам другого cnv на другом компьютере: соединись с порталом стрелкой, и connections покажет, кто подключён к нему на той стороне (id вида «портал/агент»); agent_send им пишет через портал, ответ — wait_reply. Остальное с той стороны не видно.',
         'Камера и рабочий стол на экране — человека: zoom_to и switch_desktop сбивают ему фокус, зови их только по его просьбе. Посмотреть самому — screenshot ids=… или rect=… (снимок без сдвига камеры, хоть на другом столе).',

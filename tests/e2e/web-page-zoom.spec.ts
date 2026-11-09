@@ -45,8 +45,8 @@ test('−/+ меняют масштаб страницы, процент сбр�
   await expect(zoom).toHaveText('100%')
   await expect.poll(guestZoom, { timeout: 20000 }).toEqual([1])
 
-  await h.page.getByTitle('Крупнее').click()
-  await h.page.getByTitle('Крупнее').click()
+  await h.page.locator('button[data-tooltip="Крупнее"]').click()
+  await h.page.locator('button[data-tooltip="Крупнее"]').click()
   await expect(zoom).toHaveText('125%')
   await expect.poll(guestZoom).toEqual([1.25])
 
@@ -59,7 +59,7 @@ test('−/+ меняют масштаб страницы, процент сбр�
     )
     .toBe(1.25)
 
-  await h.page.getByTitle('Мельче').click()
+  await h.page.locator('button[data-tooltip="Мельче"]').click()
   await expect(zoom).toHaveText('110%')
   await zoom.click()
   await expect(zoom).toHaveText('100%')

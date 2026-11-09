@@ -14,6 +14,8 @@ import { TimerNodeLowDetail, TimerNodeView } from './TimerNode'
 import { TIMER_SIZE } from '@core/timer'
 import { BoardNodeLowDetail, BoardNodeView } from './BoardNode'
 import { BOARD_SIZE } from '@core/board'
+import { DATA_SIZE } from '@core/data'
+import { DataNodeLowDetail, DataNodeView } from './DataNode'
 import { FileLowDetail, GroupLowDetail, WebLowDetail } from './lowDetail'
 
 let done = false
@@ -95,6 +97,14 @@ export function registerBuiltinNodeTypes(): void {
     renderLowDetail: TimerNodeLowDetail,
     interactive: false,
     defaultSize: () => TIMER_SIZE
+  })
+
+  registerNodeType<DocNode>({
+    kind: 'data',
+    render: DataNodeView,
+    renderLowDetail: DataNodeLowDetail,
+    interactive: true,
+    defaultSize: () => DATA_SIZE
   })
 
   registerNodeType<DocNode & GroupNode>({

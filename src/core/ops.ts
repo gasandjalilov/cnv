@@ -1,6 +1,7 @@
 import { portalPlaceholder, withPortalSpec } from './portal'
 import { timerPlaceholder, withTimerSpec } from './timer'
 import { withBoard, type BoardSpec } from './board'
+import { withData, type DataSpec } from './data'
 import type { CanvasColor, NodeSide } from '@shared/canvas'
 import {
   addNodes,
@@ -24,6 +25,7 @@ export type NodeInit =
   | { type: 'portal'; key: string; label?: string }
   | { type: 'timer'; every: number; message: string; since: number }
   | { type: 'board'; board: BoardSpec }
+  | { type: 'data'; data: DataSpec }
 
 export function makeNode(init: NodeInit, rect: Rect, color?: CanvasColor): DocNode {
   const base = {
@@ -66,6 +68,8 @@ export function makeNode(init: NodeInit, rect: Rect, color?: CanvasColor): DocNo
       }
     case 'board':
       return withBoard({ ...base, type: 'text', text: '' }, init.board)
+    case 'data':
+      return withData({ ...base, type: 'text', text: '' }, init.data)
     case 'timer':
       return {
         ...base,

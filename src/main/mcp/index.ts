@@ -130,7 +130,7 @@ export async function startMcp(ctx: McpContext): Promise<McpService | null> {
     }, 200)
   }
   messages.onChange = mailChanged
-  const sleep =(ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+  const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
   const post = new LetterPost(
     {
       isRunning: isTerminalRunning,
@@ -238,6 +238,11 @@ export async function startMcp(ctx: McpContext): Promise<McpService | null> {
     },
     attachmentsDir: path.join(dir, 'attachments'),
     importFile: (abs) => ctx.workspace.importPath(abs, ctx.settings.settings.workspace.attachmentsDir),
+    readFile: async (relPath) =>
+      ctx.workspace
+        .read(relPath)
+        .then((file) => file.text)
+        .catch(() => null),
     snapshot: (source, scale) => renderSnapshot(source, scale),
     perf: async (seconds) => {
       const win = ctx.getWindow()

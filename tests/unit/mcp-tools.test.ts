@@ -100,6 +100,7 @@ function setup(): {
       write: (id, data) => writes.push([id, data])
     },
     importFile: async (abs) => ({ relPath: `attachments/${abs.split('/').pop()}`, source: abs }),
+    readFile: async () => 'run,seconds\nпервый,12.4\n',
     screenshot: async () => 'AAAA',
     web: {
       evaluate: async () => ({}),
@@ -159,6 +160,43 @@ describe('инструменты MCP', () => {
     expect(calls.at(-1)).toEqual({
       method: 'createNode',
       params: { init: { kind: 'text', text: 'привет' }, place: { near: 'me' } }
+    })
+  })
+
+  it('data-нода создаётся и обновляется через плоские MCP-аргументы', async () => {
+    const { handler, calls } = setup()
+    const rows = [{ run: 1, seconds: 12.4 }]
+    await call(handler, 'create_node', {
+      kind: 'data',
+      title: 'Тесты',
+      view: 'chart',
+      data: rows,
+      options: { x: 'run', y: 'seconds', series: 'line' }
+    })
+    expect(calls.at(-1)?.params).toMatchObject({
+      init: { kind: 'data', title: 'Тесты', view: 'chart', data: rows, options: { x: 'run', y: 'seconds' } }
+    })
+
+    await call(handler, 'update_node', { id: 'd', view: 'table', data: rows, title: 'Результаты' })
+    expect(calls.at(-1)).toEqual({
+      method: 'updateNode',
+      params: {
+        id: 'd',
+        patch: { data: { title: 'Результаты', view: 'table', rows } },
+        restart: true
+      }
+    })
+  })
+
+  it('data-нода импортирует CSV по абсолютному пути', async () => {
+    const { handler, calls } = setup()
+    await call(handler, 'create_node', { kind: 'data', file: '/home/me/results.csv' })
+    expect(calls.at(-1)?.params).toMatchObject({
+      init: {
+        kind: 'data',
+        title: 'results',
+        data: [{ run: 'первый', seconds: 12.4 }]
+      }
     })
   })
 

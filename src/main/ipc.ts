@@ -37,6 +37,10 @@ import { verifyPeer, type DeviceKeys } from './device-identity'
 import type { PortalIncoming } from '@shared/portal'
 import type { AgentRegistry } from './agents/registry'
 import type { McpService } from './mcp'
+import type { DatabaseConnection, DatabaseTable } from '@shared/database'
+import { listDatabaseTables, readDatabaseTable } from './database'
+import type { KanbanConnection, KanbanSource } from '@shared/kanban'
+import { importKanbanBoard, listKanbanSources } from './kanban'
 
 export interface IpcContext {
   workspace: Workspace
@@ -165,6 +169,15 @@ export function registerIpc(ctx: IpcContext): void {
       : await dialog.showOpenDialog({ ...options, properties: [...options.properties] })
     return result.canceled ? [] : result.filePaths
   })
+
+  handle(IPC.databaseTables, (_e, connection: DatabaseConnection) => listDatabaseTables(connection))
+  handle(IPC.databaseRows, (_e, connection: DatabaseConnection, table: DatabaseTable) =>
+    readDatabaseTable(connection, table)
+  )
+  handle(IPC.kanbanSources, (_e, connection: KanbanConnection) => listKanbanSources(connection))
+  handle(IPC.kanbanImport, (_e, connection: KanbanConnection, source: KanbanSource) =>
+    importKanbanBoard(connection, source)
+  )
 
   handle(IPC.filesPreview, async (_e, relPath: string, maxSide: number) => {
     const abs = await insideRoot(relPath)

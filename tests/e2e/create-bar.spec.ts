@@ -64,3 +64,18 @@ test('клик без перетаскивания — терминал в це�
   // Ничего не было выделено — стрелок не прибавилось.
   await expect(h.page.locator('[data-edge-id]')).toHaveCount(1)
 })
+
+test('data создаётся кнопкой слева кликом и перетаскиванием', async () => {
+  await h.page.locator('.create-bar__item[data-kind="data"]').click()
+  await expect.poll(nodeCount).toBe(4)
+  await expect(h.page.getByTestId('data-node')).toHaveAttribute('data-view', 'table')
+  await expect(h.page.getByTestId('data-node')).toContainText('Нет данных')
+
+  await dragFromBar('data', { x: 500, y: 650 })
+  await expect.poll(nodeCount).toBe(5)
+  const created = h.page.getByTestId('data-node').last()
+  const box = await created.boundingBox()
+  expect(box).not.toBeNull()
+  expect(Math.abs(box!.x + box!.width / 2 - 500)).toBeLessThan(3)
+  expect(Math.abs(box!.y + box!.height / 2 - 650)).toBeLessThan(3)
+})

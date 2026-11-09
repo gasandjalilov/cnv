@@ -96,6 +96,10 @@ export const COMMANDS: readonly CommandDef[] = [
   { id: 'create.portal', label: 'Портал к другому cnv', section: 'create' },
   { id: 'create.timer', label: 'Таймер для агентов', section: 'create' },
   { id: 'create.board', label: 'Канбан-доска', section: 'create' },
+  { id: 'create.data', label: 'Данные', section: 'create' },
+  { id: 'create.importData', label: 'Импорт таблицы…', section: 'create' },
+  { id: 'create.importDatabase', label: 'Импорт из базы данных…', section: 'create' },
+  { id: 'create.importKanban', label: 'Импорт из Jira / Kaiten…', section: 'create' },
   { id: 'node.rename', label: 'Переименовать…', section: 'edit', accelerator: 'F2', needsSelection: true },
   { id: 'node.role', label: 'Роль…', section: 'edit', needsSelection: true },
   { id: 'node.icon', label: 'Значок агента…', section: 'edit', needsSelection: true },
@@ -345,7 +349,11 @@ export const CREATE_MENU: MenuGroup = {
     'create.agent',
     'create.portal',
     'create.timer',
-    'create.board'
+    'create.board',
+    'create.data',
+    'create.importData',
+    'create.importDatabase',
+    'create.importKanban'
   ]
 }
 

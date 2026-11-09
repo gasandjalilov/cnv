@@ -67,7 +67,7 @@ test('активная нода даёт навигацию, текстовый 
   expect(rendered).toBeGreaterThan(0)
   expect(rendered).toBeLessThan(15)
 
-  await h.page.locator('.node-pdf__bar button[title="Следующая"]').click()
+  await h.page.locator('.node-pdf__bar button[data-tooltip="Следующая"]').click()
   await h.page.waitForTimeout(1500)
   await expect(h.page.locator('.node-pdf__page')).toHaveValue('2')
 

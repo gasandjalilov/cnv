@@ -23,6 +23,8 @@ import type { AgentPluginsState, AgentSessionInfo } from '@shared/agent-plugin'
 import type { Settings } from '@shared/settings'
 import type { SnapshotPayload } from '@shared/snapshot'
 import type { DeviceIdentityView, PortalDelivery } from '@shared/portal'
+import type { DatabaseTable, DatabaseTableRows } from '@shared/database'
+import type { KanbanImportResult, KanbanSource } from '@shared/kanban'
 
 function on<T extends unknown[]>(channel: string, cb: (...args: T) => void): Unsubscribe {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]): void => cb(...(args as T))
@@ -77,6 +79,16 @@ const api: AppApi = {
     readDoc: (relPath) => ipcRenderer.invoke(IPC.filesReadDoc, relPath) as Promise<TextFileContent | null>,
     writeDoc: (relPath, text, baseMtimeMs, force) =>
       ipcRenderer.invoke(IPC.filesWriteDoc, relPath, text, baseMtimeMs, force) as Promise<TextFileWrite>
+  },
+  database: {
+    tables: (connection) => ipcRenderer.invoke(IPC.databaseTables, connection) as Promise<DatabaseTable[]>,
+    rows: (connection, table) =>
+      ipcRenderer.invoke(IPC.databaseRows, connection, table) as Promise<DatabaseTableRows>
+  },
+  kanban: {
+    sources: (connection) => ipcRenderer.invoke(IPC.kanbanSources, connection) as Promise<KanbanSource[]>,
+    import: (connection, source) =>
+      ipcRenderer.invoke(IPC.kanbanImport, connection, source) as Promise<KanbanImportResult>
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke(IPC.shellOpenExternal, url) as Promise<void>

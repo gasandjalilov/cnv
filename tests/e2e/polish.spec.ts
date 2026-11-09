@@ -112,6 +112,39 @@ test('тема переключается из настроек', async () => {
   await h.page.click('[data-testid="settings"] .dialog__buttons button')
 })
 
+test('тема переключается кнопкой в нижней панели', async () => {
+  const toggle = h.page.getByTestId('theme-toggle')
+  await expect(toggle).toHaveAttribute('aria-label', 'Включить тёмную тему')
+  await toggle.click()
+  await expect.poll(() => h.page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark')
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+
+  await toggle.click()
+  await expect.poll(() => h.page.evaluate(() => document.documentElement.dataset.theme)).toBe('light')
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('подсказка кнопки появляется сразу под указателем', async () => {
+  const button = h.page.locator('.create-bar__item').first()
+  const text = await button.getAttribute('data-tooltip')
+  expect(text).toBeTruthy()
+  const box = await button.boundingBox()
+  if (!box || !text) throw new Error('нет кнопки с подсказкой')
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await h.page.mouse.move(x, y)
+
+  const tooltip = h.page.getByTestId('instant-tooltip')
+  await expect(tooltip).toBeVisible()
+  await expect(tooltip).toHaveText(text)
+  const tooltipBox = await tooltip.boundingBox()
+  expect(tooltipBox).not.toBeNull()
+  expect((tooltipBox?.y ?? 0) > y).toBe(true)
+
+  await h.page.mouse.move(400, 20)
+  await expect(tooltip).toHaveCount(0)
+})
+
 test('переводы строк в карточке сохраняются', async () => {
   await h.page.locator('[data-testid="viewport"]').dblclick({ position: { x: 700, y: 500 } })
   await h.page.waitForSelector('.cm-editor')

@@ -6,6 +6,8 @@ interface Props {
   onFitAll(): void
   onFitSelection(): void
   canFitSelection: boolean
+  dark: boolean
+  onToggleTheme(): void
 }
 
 /** Иконка «вписать всё»: рамка с уголками, раздвигающимися наружу. */
@@ -35,8 +37,33 @@ function FitSelectionIcon(): React.JSX.Element {
   )
 }
 
-export function Hud({ camera, onFitAll, onFitSelection, canFitSelection }: Props): React.JSX.Element {
+function ThemeIcon({ dark }: { dark: boolean }): React.JSX.Element {
+  return dark ? (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <circle cx="8" cy="8" r="3" />
+      <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13" />
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <path
+        d="M13.7 10.1A6.2 6.2 0 0 1 5.9 2.3 6.2 6.2 0 1 0 13.7 10.1Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function Hud({
+  camera,
+  onFitAll,
+  onFitSelection,
+  canFitSelection,
+  dark,
+  onToggleTheme
+}: Props): React.JSX.Element {
   const cam = useCameraValue(camera)
+  const themeLabel = dark ? 'Включить светлую тему' : 'Включить тёмную тему'
   return (
     <div className="panel hud">
       <button type="button" className="panel__btn hud__icon" title="Вписать всё (Shift+1)" onClick={onFitAll}>
@@ -75,6 +102,18 @@ export function Hud({ camera, onFitAll, onFitSelection, canFitSelection }: Props
         onClick={() => camera.zoomToCenter(cam.zoom * 1.25)}
       >
         +
+      </button>
+      <span className="panel__sep" />
+      <button
+        type="button"
+        className="panel__btn hud__icon"
+        title={themeLabel}
+        aria-label={themeLabel}
+        aria-pressed={dark}
+        data-testid="theme-toggle"
+        onClick={onToggleTheme}
+      >
+        <ThemeIcon dark={dark} />
       </button>
     </div>
   )

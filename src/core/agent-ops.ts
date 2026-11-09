@@ -29,6 +29,7 @@ import {
   withTimerSpec
 } from './timer'
 import { BOARD_SIZE, BoardError, applyBoardOp, boardSpec, newBoard, withBoard } from './board'
+import { DATA_SIZE, DataError, dataSpec, makeDataSpec, withData } from './data'
 
 /**
  * Чистые преобразования для агентов из MCP: как показать документ наружу и как
@@ -62,6 +63,11 @@ export function toAgentNode(node: DocNode, maxText = Infinity): AgentNode {
       const board = boardSpec(node)
       if (board) {
         out.board = board
+        break
+      }
+      const data = dataSpec(node)
+      if (data) {
+        out.data = data
         break
       }
       const timer = timerSpec(node)
@@ -165,6 +171,8 @@ export function defaultSize(init: AgentNodeInit, sizes: DefaultSizes): Size {
       return TIMER_SIZE
     case 'board':
       return BOARD_SIZE
+    case 'data':
+      return DATA_SIZE
     case 'terminal':
     case 'agent':
       return { width: 720, height: 420 }
@@ -275,6 +283,20 @@ export function buildNode(doc: CanvasDoc, init: AgentNodeInit, rect: Rect, optio
         rect,
         color
       )
+    case 'data':
+      try {
+        return makeNode(
+          {
+            type: 'data',
+            data: makeDataSpec({ title: init.title, view: init.view, rows: init.data, options: init.options })
+          },
+          rect,
+          color
+        )
+      } catch (error) {
+        if (error instanceof DataError) throw new AgentOpError(error.message)
+        throw error
+      }
     case 'timer':
       return makeNode(
         { type: 'timer', every: checkEvery(init.every), message: init.message, since: Date.now() },
@@ -379,14 +401,34 @@ export function applyNodePatch(doc: CanvasDoc, id: string, patch: AgentNodePatch
       throw e
     }
   }
+  const data = dataSpec(node)
+  if (patch.data !== undefined) {
+    if (!data) throw new AgentOpError(`нода ${id} не data-нода`)
+    try {
+      const nextData = makeDataSpec({
+        title: patch.data.title ?? data.title,
+        view: patch.data.view ?? data.view,
+        rows: patch.data.rows ?? data.rows,
+        options: patch.data.options ?? data.options
+      })
+      const updated = withData(node, nextData) as DocNode & { text: string }
+      next.text = updated.text
+      next.extra = updated.extra
+    } catch (error) {
+      if (error instanceof DataError) throw new AgentOpError(error.message)
+      throw error
+    }
+  }
   if (patch.text !== undefined) {
-    if (node.type !== 'text' || isTerminal(node) || timer || board)
+    if (node.type !== 'text' || isTerminal(node) || timer || board || data)
       throw new AgentOpError(
         timer
           ? `таймеру — message, а не text`
           : board
             ? `доске — board, а не text`
-            : `у ноды ${id} нет текста`
+            : data
+              ? `data-ноде — title/view/data/options, а не text`
+              : `у ноды ${id} нет текста`
       )
     next.text = patch.text
   }

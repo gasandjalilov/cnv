@@ -3,9 +3,10 @@ import { isTerminal } from './terminal'
 import { isPortal } from './portal'
 import { isTimer } from './timer'
 import { isBoard } from './board'
+import { isData } from './data'
 
 export type NodeKind =
-  'text' | 'image' | 'pdf' | 'web' | 'group' | 'file' | 'terminal' | 'portal' | 'timer' | 'board'
+  'text' | 'image' | 'pdf' | 'web' | 'group' | 'file' | 'terminal' | 'portal' | 'timer' | 'board' | 'data'
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'avif', 'bmp', 'ico'])
 
@@ -26,7 +27,9 @@ export function nodeKind(node: DocNode): NodeKind {
             ? 'timer'
             : isBoard(node)
               ? 'board'
-              : 'text'
+              : isData(node)
+                ? 'data'
+                : 'text'
     case 'link':
       return 'web'
     case 'group':

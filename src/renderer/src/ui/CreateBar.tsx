@@ -4,7 +4,19 @@ import type { CameraController } from '@core/camera-controller'
 import type { Point, Size } from '@core/geometry'
 import { COMMAND_BY_ID } from '@shared/commands'
 
-export type CreateKind = 'text' | 'web' | 'file' | 'terminal' | 'agent' | 'portal' | 'timer' | 'board'
+export type CreateKind =
+  | 'text'
+  | 'web'
+  | 'file'
+  | 'terminal'
+  | 'agent'
+  | 'portal'
+  | 'timer'
+  | 'board'
+  | 'data'
+  | 'dataImport'
+  | 'databaseImport'
+  | 'kanbanImport'
 
 interface Item {
   kind: CreateKind
@@ -81,6 +93,20 @@ const ITEMS: readonly Item[] = [
     )
   },
   {
+    kind: 'data',
+    command: 'create.data',
+    icon: svg(
+      <>
+        <path d="M3 13.5V2.5M3 13.5h11" />
+        <path d="m5 10 2.5-3 2 1.5L13 4" />
+        <circle cx="5" cy="10" r="0.7" fill="currentColor" stroke="none" />
+        <circle cx="7.5" cy="7" r="0.7" fill="currentColor" stroke="none" />
+        <circle cx="9.5" cy="8.5" r="0.7" fill="currentColor" stroke="none" />
+        <circle cx="13" cy="4" r="0.7" fill="currentColor" stroke="none" />
+      </>
+    )
+  },
+  {
     kind: 'timer',
     command: 'create.timer',
     icon: svg(
@@ -133,6 +159,8 @@ export function CreateBar({
 }: Props): React.JSX.Element {
   const [drag, setDrag] = useState<Drag | null>(null)
   const [agentsOpen, setAgentsOpen] = useState(false)
+  const [dataOpen, setDataOpen] = useState(false)
+  const [boardOpen, setBoardOpen] = useState(false)
   const dragRef = useRef<Drag | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
 
@@ -145,13 +173,16 @@ export function CreateBar({
   }, [dragging])
 
   useEffect(() => {
-    if (!agentsOpen) return
+    if (!agentsOpen && !dataOpen && !boardOpen) return
     const close = (e: PointerEvent): void => {
-      if (!barRef.current?.contains(e.target as Node)) setAgentsOpen(false)
+      if (barRef.current?.contains(e.target as Node)) return
+      setAgentsOpen(false)
+      setDataOpen(false)
+      setBoardOpen(false)
     }
     window.addEventListener('pointerdown', close, true)
     return () => window.removeEventListener('pointerdown', close, true)
-  }, [agentsOpen])
+  }, [agentsOpen, dataOpen, boardOpen])
 
   const update = (next: Drag | null): void => {
     dragRef.current = next
@@ -182,12 +213,16 @@ export function CreateBar({
     const moved = Math.hypot(e.clientX - current.start.x, e.clientY - current.start.y)
     if (moved < DRAG_THRESHOLD) {
       setAgentsOpen(false)
+      setDataOpen(false)
+      setBoardOpen(false)
       onCreate(current.kind, null, current.agent)
       return
     }
     const viewport = viewportRef.current?.getBoundingClientRect()
     if (!current.at || !viewport) return
     setAgentsOpen(false)
+    setDataOpen(false)
+    setBoardOpen(false)
     onCreate(
       current.kind,
       screenToWorld(camera.value, { x: current.at.x - viewport.left, y: current.at.y - viewport.top }),
@@ -205,20 +240,31 @@ export function CreateBar({
           const def = COMMAND_BY_ID.get(item.command)
           const hotkey = def?.accelerator?.replace('CmdOrCtrl', 'Ctrl')
           const isAgent = item.kind === 'agent'
+          const isData = item.kind === 'data'
+          const isBoard = item.kind === 'board'
           const label = isAgent
             ? `Агент: ${agents.find((a) => a.id === defaultAgent)?.label ?? defaultAgent}`
             : (def?.label ?? item.kind)
+          const contextHint = isAgent
+            ? '; правый клик — другие агенты'
+            : isData
+              ? '; правый клик — импорт таблицы или БД'
+              : isBoard
+                ? '; правый клик — Jira и Kaiten'
+                : ''
           return (
             <button
               key={item.kind}
               type="button"
               className="panel__btn create-bar__item"
               data-kind={item.kind}
-              title={`${label}${hotkey ? ` (${hotkey})` : ''} — клик или тяни на холст${isAgent ? '; правый клик — другие агенты' : ''}`}
+              title={`${label}${hotkey ? ` (${hotkey})` : ''} — клик или тяни на холст${contextHint}`}
               onContextMenu={(e) => {
-                if (!isAgent) return
+                if (!isAgent && !isData && !isBoard) return
                 e.preventDefault()
-                setAgentsOpen((v) => !v)
+                setAgentsOpen(isAgent ? !agentsOpen : false)
+                setDataOpen(isData ? !dataOpen : false)
+                setBoardOpen(isBoard ? !boardOpen : false)
               }}
               onPointerDown={onPointerDown(item.kind)}
               onPointerMove={onPointerMove}
@@ -256,10 +302,80 @@ export function CreateBar({
               title="Агент по умолчанию — продолжить одну из прошлых сессий"
               onClick={() => {
                 setAgentsOpen(false)
+                setDataOpen(false)
+                setBoardOpen(false)
                 onResume(null)
               }}
             >
               ⟲ Продолжить сессию…
+            </button>
+          </div>
+        )}
+        {boardOpen && (
+          <div className="panel panel--vertical create-bar__agents" data-testid="create-board-options">
+            <button
+              type="button"
+              className="panel__btn panel__btn--wide create-bar__agent"
+              data-testid="create-board-empty"
+              title="Пустая канбан-доска — клик или тяни на холст"
+              onPointerDown={onPointerDown('board')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => finish(e, false)}
+              onPointerCancel={(e) => finish(e, true)}
+            >
+              ▦ Пустая доска
+            </button>
+            <button
+              type="button"
+              className="panel__btn panel__btn--wide create-bar__agent"
+              data-testid="create-kanban-import"
+              title="Одноразовый импорт проекта Jira или доски Kaiten"
+              onPointerDown={onPointerDown('kanbanImport')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => finish(e, false)}
+              onPointerCancel={(e) => finish(e, true)}
+            >
+              ⇩ Импорт Jira / Kaiten…
+            </button>
+          </div>
+        )}
+        {dataOpen && (
+          <div className="panel panel--vertical create-bar__agents" data-testid="create-data-options">
+            <button
+              type="button"
+              className="panel__btn panel__btn--wide create-bar__agent"
+              data-testid="create-data-empty"
+              title="Пустая data-нода — клик или тяни на холст"
+              onPointerDown={onPointerDown('data')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => finish(e, false)}
+              onPointerCancel={(e) => finish(e, true)}
+            >
+              ⌁ Пустая нода
+            </button>
+            <button
+              type="button"
+              className="panel__btn panel__btn--wide create-bar__agent"
+              data-testid="create-data-import"
+              title="Импорт CSV, TSV или JSON — клик или тяни на холст"
+              onPointerDown={onPointerDown('dataImport')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => finish(e, false)}
+              onPointerCancel={(e) => finish(e, true)}
+            >
+              ⇩ Импорт таблицы…
+            </button>
+            <button
+              type="button"
+              className="panel__btn panel__btn--wide create-bar__agent"
+              data-testid="create-database-import"
+              title="Одноразовый импорт таблицы из SQLite, PostgreSQL или MySQL/MariaDB"
+              onPointerDown={onPointerDown('databaseImport')}
+              onPointerMove={onPointerMove}
+              onPointerUp={(e) => finish(e, false)}
+              onPointerCancel={(e) => finish(e, true)}
+            >
+              ◉ Подключить БД…
             </button>
           </div>
         )}
